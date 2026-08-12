@@ -7,15 +7,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/router.js",
-    "dev": "ts-node src/router.ts",
-    "test": "node --test --loader ts-node/esm tests/*.test.ts"
+    "dev": "tsx src/router.ts",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.5.0"
   },
   "devDependencies": {
     "typescript": "^5.5.4",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.19.0",
     "@types/node": "^20.14.0"
   }
 }
