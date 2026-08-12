@@ -1,0 +1,35 @@
+{
+  "name": "industry-news-tracker",
+  "description": "Tracks Adobe release notes and curated martech/CDP industry RSS feeds; builds weekly digests.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "tools": [
+    {
+      "name": "getWeeklyDigest",
+      "description": "Build a combined Adobe release notes + industry news digest for the last N days.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "windowDays": { "type": "number", "default": 7 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "generatedAt": { "type": "string" },
+          "windowDays": { "type": "number" },
+          "releaseNotes": { "type": "array", "items": { "type": "object" } },
+          "industryNews": { "type": "array", "items": { "type": "object" } },
+          "markdown": { "type": "string" }
+        },
+        "required": ["generatedAt", "windowDays", "releaseNotes", "industryNews", "markdown"]
+      }
+    },
+    {
+      "name": "getIndustryNews",
+      "description": "Fetch the raw list of curated industry RSS items (no date filtering).",
+      "inputSchema": { "type": "object", "properties": {} },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    }
+  ]
+}

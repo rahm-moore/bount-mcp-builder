@@ -1,0 +1,51 @@
+name: Build Images
+
+# Builds and pushes a Docker image per mcp-server (plus orchestrator and
+# web-ui) whenever main changes. Add a new server? Add a matrix entry here
+# and it picks up the same build/push flow automatically.
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    name: Build & push (${{ matrix.service.name }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service:
+          - name: aep-core
+            context: mcp-servers/aep-core
+          - name: site-crawler
+            context: mcp-servers/site-crawler
+          - name: industry-news-tracker
+            context: mcp-servers/industry-news-tracker
+          - name: orchestrator
+            context: orchestrator
+          - name: web-ui-backend
+            context: web-ui/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.context }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/bount-mcp-${{ matrix.service.name }}:latest
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/bount-mcp-${{ matrix.service.name }}:${{ github.sha }}

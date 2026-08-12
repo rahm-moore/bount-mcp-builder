@@ -1,0 +1,79 @@
+version: "3.9"
+
+# Local development stack. Every MCP server + the web-ui runs as its own
+# container. Secrets are never baked into images — see secrets/README.md.
+# Add new servers here AND in ci.yml / build-images.yml (see docs/onboarding.md).
+
+services:
+  aep-core:
+    build:
+      context: ./mcp-servers/aep-core
+    container_name: aep-core
+    environment:
+      - MCP_SECRETS_BACKEND=local
+      - MCP_SERVER_NAME=aep-core
+    volumes:
+      - ./secrets:/app/secrets:ro
+    ports:
+      - "8801:8801"
+
+  site-crawler:
+    build:
+      context: ./mcp-servers/site-crawler
+    container_name: site-crawler
+    environment:
+      - MCP_SECRETS_BACKEND=local
+      - MCP_SERVER_NAME=site-crawler
+    volumes:
+      - ./secrets:/app/secrets:ro
+    ports:
+      - "8802:8802"
+
+  industry-news-tracker:
+    build:
+      context: ./mcp-servers/industry-news-tracker
+    container_name: industry-news-tracker
+    environment:
+      - MCP_SERVER_NAME=industry-news-tracker
+    ports:
+      - "8803:8803"
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+    container_name: orchestrator
+    environment:
+      - AEP_CORE_URL=http://aep-core:8801
+      - SITE_CRAWLER_URL=http://site-crawler:8802
+      - INDUSTRY_NEWS_TRACKER_URL=http://industry-news-tracker:8803
+    depends_on:
+      - aep-core
+      - site-crawler
+      - industry-news-tracker
+    ports:
+      - "8800:8800"
+
+  web-ui-backend:
+    build:
+      context: ./web-ui/backend
+    container_name: web-ui-backend
+    environment:
+      - ORCHESTRATOR_URL=http://orchestrator:8800
+      - AEP_CORE_URL=http://aep-core:8801
+      - SITE_CRAWLER_URL=http://site-crawler:8802
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    depends_on:
+      - orchestrator
+    ports:
+      - "4000:4000"
+
+  web-ui-frontend:
+    build:
+      context: ./web-ui/frontend
+    container_name: web-ui-frontend
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:4000
+    depends_on:
+      - web-ui-backend
+    ports:
+      - "3000:3000"

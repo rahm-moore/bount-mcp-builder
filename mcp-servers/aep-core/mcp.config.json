@@ -1,0 +1,171 @@
+{
+  "name": "aep-core",
+  "description": "Full Adobe Experience Platform API surface: auth, Flow Service (dataflows/datastreams), Schema Registry, Catalog, Segmentation, Identity, Governance, Sandboxes.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "tools": [
+    {
+      "name": "list_dataflows",
+      "description": "List Flow Service dataflows configured for this tenant/sandbox.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string", "description": "Named credential profile, e.g. cit_bank_test_user" },
+          "domain": { "type": "string", "description": "Target domain the call is scoped to, validated against the profile's allowedDomains" }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    },
+    {
+      "name": "get_dataflow",
+      "description": "Get a single Flow Service dataflow by id, including its current state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" },
+          "flow_id": { "type": "string" }
+        },
+        "required": ["profile", "domain", "flow_id"]
+      },
+      "outputSchema": { "type": "object" }
+    },
+    {
+      "name": "list_datastreams",
+      "description": "List Web SDK datastreams (edge configs) configured for this tenant.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    },
+    {
+      "name": "get_datastream_services",
+      "description": "Get the service mappings (Analytics/Target/AAM/AEP) for a datastream.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" },
+          "edge_config_id": { "type": "string" }
+        },
+        "required": ["profile", "domain", "edge_config_id"]
+      },
+      "outputSchema": { "type": "object" }
+    },
+    {
+      "name": "list_schemas",
+      "description": "List XDM schemas in a Schema Registry container ('tenant' or 'global').",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" },
+          "container": { "type": "string", "default": "tenant", "enum": ["tenant", "global"] }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    },
+    {
+      "name": "get_schema",
+      "description": "Get the full definition of one XDM schema.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" },
+          "schema_id": { "type": "string" },
+          "container": { "type": "string", "default": "tenant", "enum": ["tenant", "global"] }
+        },
+        "required": ["profile", "domain", "schema_id"]
+      },
+      "outputSchema": { "type": "object" }
+    },
+    {
+      "name": "list_datasets",
+      "description": "List Catalog datasets for this tenant/sandbox.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": { "type": "object" }
+    },
+    {
+      "name": "list_segments",
+      "description": "List Real-Time CDP segment definitions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    },
+    {
+      "name": "list_audiences",
+      "description": "List Real-Time CDP audiences available for activation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    },
+    {
+      "name": "get_identity_clusters",
+      "description": "Look up the identity graph cluster for a given namespace + identity value.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" },
+          "namespace": { "type": "string" },
+          "identity_value": { "type": "string" }
+        },
+        "required": ["profile", "domain", "namespace", "identity_value"]
+      },
+      "outputSchema": { "type": "object" }
+    },
+    {
+      "name": "list_data_usage_policies",
+      "description": "List configured Data Usage policies for this tenant.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    },
+    {
+      "name": "list_sandboxes",
+      "description": "List sandboxes available to this tenant/profile.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    }
+  ]
+}

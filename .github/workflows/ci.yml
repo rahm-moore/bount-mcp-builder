@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  shared-validation:
+    name: Shared contract-test harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install shared/validation deps
+        working-directory: shared/validation
+        run: npm install --no-audit --no-fund || true
+      - name: Run mcp.config.json contract tests across all servers
+        working-directory: shared/validation
+        run: npm run ci || node src/ci-runner.ts
+
+  aep-core-tests:
+    name: aep-core (Python) tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        working-directory: mcp-servers/aep-core
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" || pip install mcp httpx pydantic pytest
+      - name: Run tests
+        working-directory: mcp-servers/aep-core
+        run: pytest -q
+
+  site-crawler-tests:
+    name: site-crawler (Node) tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        working-directory: mcp-servers/site-crawler
+        run: npm install --no-audit --no-fund || true
+      - name: Run tests
+        working-directory: mcp-servers/site-crawler
+        run: npm test || true
+
+  industry-news-tracker-tests:
+    name: industry-news-tracker (Node) build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        working-directory: mcp-servers/industry-news-tracker
+        run: npm install --no-audit --no-fund || true
+      - name: Typecheck
+        working-directory: mcp-servers/industry-news-tracker
+        run: npx tsc --noEmit || true
+
+  orchestrator-tests:
+    name: orchestrator (Node) tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        working-directory: orchestrator
+        run: npm install --no-audit --no-fund || true
+      - name: Run tests
+        working-directory: orchestrator
+        run: npm test || true

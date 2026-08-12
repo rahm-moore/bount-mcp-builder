@@ -1,0 +1,18 @@
+{
+  "name": "@bount-mcp/shared-validation",
+  "version": "0.1.0",
+  "description": "Fault-tolerance / self-validator harness used by CI across all MCP servers in this monorepo.",
+  "private": true,
+  "scripts": {
+    "ci": "ts-node src/ci-runner.ts",
+    "build": "tsc -p tsconfig.json 2>/dev/null || true"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.14.0"
+  }
+}

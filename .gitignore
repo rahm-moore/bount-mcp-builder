@@ -1,0 +1,35 @@
+## Secrets — never commit real credentials or resolved profile data
+secrets/profiles.json
+**/credentials.json
+.env
+.env.*
+!.env.example
+
+## Logs
+logs/
+*.log
+
+## Node
+node_modules/
+dist/
+build/
+.next/
+npm-debug.log*
+yarn-error.log*
+
+## Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+## Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,49 @@
+{
+  "name": "site-crawler",
+  "description": "Crawls client sites and audits Web SDK (alloy.js) implementations: version staleness, duplicate tag loads, event-fire verification.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "tools": [
+    {
+      "name": "crawl",
+      "description": "Crawl a domain and audit its Web SDK (alloy.js) implementation. Returns a jobId immediately; findings are populated asynchronously.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string", "description": "Named credential profile for gated/staging domains" },
+          "domain": { "type": "string", "description": "Domain to crawl, e.g. www.citbank.com" }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": { "type": "string" }
+        },
+        "required": ["jobId"]
+      }
+    },
+    {
+      "name": "getFindings",
+      "description": "Poll for the status/findings of a previously started crawl job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": { "type": "string" }
+        },
+        "required": ["jobId"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": { "type": "string" },
+          "domain": { "type": "string" },
+          "status": { "type": "string", "enum": ["queued", "running", "completed", "failed"] },
+          "findings": { "type": "array", "items": { "type": "object" } },
+          "error": { "type": "string" }
+        },
+        "required": ["jobId", "domain", "status", "findings"]
+      }
+    }
+  ]
+}

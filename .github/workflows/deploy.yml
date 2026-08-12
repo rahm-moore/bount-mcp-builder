@@ -1,0 +1,42 @@
+name: Deploy
+
+# Placeholder deploy pipeline. No real infra target is wired up yet — this
+# exists so the deploy step has a home in CI once a target (ECS/K8s/etc.)
+# is chosen. Manually triggerable in the meantime via workflow_dispatch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+  workflow_run:
+    workflows: ["Build Images"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    name: Deploy (${{ inputs.environment || 'staging' }})
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Deploy aep-core
+        run: echo "TODO: deploy aep-core image to ${{ inputs.environment || 'staging' }} (no infra target configured yet)"
+
+      - name: Deploy site-crawler
+        run: echo "TODO: deploy site-crawler image to ${{ inputs.environment || 'staging' }} (no infra target configured yet)"
+
+      - name: Deploy industry-news-tracker
+        run: echo "TODO: deploy industry-news-tracker image to ${{ inputs.environment || 'staging' }} (no infra target configured yet)"
+
+      - name: Deploy orchestrator
+        run: echo "TODO: deploy orchestrator image to ${{ inputs.environment || 'staging' }} (no infra target configured yet)"
+
+      - name: Deploy web-ui
+        run: echo "TODO: deploy web-ui backend + frontend to ${{ inputs.environment || 'staging' }} (no infra target configured yet)"
