@@ -16,6 +16,7 @@ import os
 
 import pytest
 
+import aep_core.auth.credential_resolver as credential_resolver
 from aep_core.auth.credential_resolver import (
     DomainNotAllowedError,
     ProfileNotFoundError,
@@ -89,5 +90,70 @@ def test_missing_env_vars_raise_secret_backend_error(profiles_manifest):
 
 def test_missing_manifest_raises_secret_backend_error(tmp_path, monkeypatch):
     monkeypatch.setenv("MCP_PROFILES_PATH", str(tmp_path / "does-not-exist.json"))
+    with pytest.raises(SecretBackendError):
+        resolve_profile(TEST_PROFILE_NAME, TEST_DOMAIN)
+
+
+@pytest.fixture()
+def doppler_profiles_manifest(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "profiles.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                TEST_PROFILE_NAME: {
+                    "dopplerConfig": {"project": "bount-mcp-builder", "config": "dev"},
+                    "allowedDomains": [TEST_DOMAIN],
+                }
+            }
+        )
+    )
+    monkeypatch.setenv("MCP_PROFILES_PATH", str(manifest_path))
+    monkeypatch.setenv("MCP_SECRETS_BACKEND", "doppler")
+    return manifest_path
+
+
+def test_doppler_missing_token_raises(doppler_profiles_manifest, monkeypatch):
+    monkeypatch.delenv("DOPPLER_TOKEN", raising=False)
+    with pytest.raises(SecretBackendError):
+        resolve_profile(TEST_PROFILE_NAME, TEST_DOMAIN)
+
+
+def test_doppler_missing_config_raises(profiles_manifest, monkeypatch):
+    # `profiles_manifest` fixture has no dopplerConfig at all.
+    monkeypatch.setenv("MCP_SECRETS_BACKEND", "doppler")
+    monkeypatch.setenv("DOPPLER_TOKEN", "<DOPPLER_TOKEN>")
+    with pytest.raises(SecretBackendError):
+        resolve_profile(TEST_PROFILE_NAME, TEST_DOMAIN)
+
+
+def test_doppler_success_never_hits_real_network(doppler_profiles_manifest, monkeypatch):
+    monkeypatch.setenv("DOPPLER_TOKEN", "<DOPPLER_TOKEN>")
+
+    calls: list[tuple[str, str, str]] = []
+
+    def fake_fetch(project: str, config: str, token: str) -> dict[str, str]:
+        calls.append((project, config, token))
+        return {
+            "AEP_PROFILE_TEST_PROFILE_BASE_URL": "https://platform.adobe.io",
+            "AEP_PROFILE_TEST_PROFILE_CLIENT_ID": "<CLIENT_ID>",
+            "AEP_PROFILE_TEST_PROFILE_CLIENT_SECRET": "<CLIENT_SECRET>",
+            "AEP_PROFILE_TEST_PROFILE_API_KEY": "<API_KEY>",
+            "AEP_PROFILE_TEST_PROFILE_ORG_ID": "<ORG_ID>@AdobeOrg",
+            "AEP_PROFILE_TEST_PROFILE_TECH_ACCOUNT_ID": "<TECH_ACCOUNT_ID>@techacct.adobe.com",
+            "AEP_PROFILE_TEST_PROFILE_SANDBOX": "prod",
+        }
+
+    monkeypatch.setattr(credential_resolver, "_fetch_doppler_secrets", fake_fetch)
+
+    creds = resolve_profile(TEST_PROFILE_NAME, TEST_DOMAIN)
+    assert creds.profile_name == TEST_PROFILE_NAME
+    assert creds.sandbox == "prod"
+    assert "<CLIENT_SECRET>" not in repr(creds)
+    assert calls == [("bount-mcp-builder", "dev", "<DOPPLER_TOKEN>")]
+
+
+def test_doppler_missing_secret_raises(doppler_profiles_manifest, monkeypatch):
+    monkeypatch.setenv("DOPPLER_TOKEN", "<DOPPLER_TOKEN>")
+    monkeypatch.setattr(credential_resolver, "_fetch_doppler_secrets", lambda *a, **k: {})
     with pytest.raises(SecretBackendError):
         resolve_profile(TEST_PROFILE_NAME, TEST_DOMAIN)

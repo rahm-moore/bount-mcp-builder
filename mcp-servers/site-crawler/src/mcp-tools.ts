@@ -39,7 +39,7 @@ export async function crawl(profile: string, domain: string): Promise<{ jobId: s
   // even though the resolved credentials themselves are only used lazily
   // if/when the crawl actually needs authenticated access.
   try {
-    resolveProfile(profile, domain);
+    await resolveProfile(profile, domain);
   } catch (err) {
     if (err instanceof ProfileNotFoundError || err instanceof DomainNotAllowedError) {
       throw err;

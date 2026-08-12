@@ -25,14 +25,19 @@ credential itself, only the *mapping*:
 {
   "cit_bank_test_user": {
     "vaultRef": "<vault-path>",
+    "dopplerConfig": { "project": "<doppler-project>", "config": "<doppler-config>" },
     "allowedDomains": ["<domain>"]
   }
 }
 ```
 
-- `vaultRef` — where the real secret lives in the production secrets
-  backend (Vault path / AWS Secrets Manager ARN). Only consulted when
-  `MCP_SECRETS_BACKEND=vault`.
+- `dopplerConfig` — the Doppler project/config this profile's secrets
+  live in. Consulted when `MCP_SECRETS_BACKEND=doppler` — the recommended
+  production backend. See `docs/security-model.md` ("Doppler setup") for
+  the full walkthrough (naming convention, service tokens, rotation).
+- `vaultRef` — where the real secret lives in Vault / AWS Secrets Manager,
+  for the alternative `MCP_SECRETS_BACKEND=vault` path (not yet
+  implemented).
 - `allowedDomains` — an allowlist of domains this profile's credentials
   may be used against. A resolver call for a domain not in this list is
   rejected before any secret is even looked up, so a leaked/misused
@@ -46,9 +51,10 @@ to get started.
 
 ## Rotation
 
-- Rotate credentials at the source (Adobe IMS / whatever system issued
-  them) first, then update the corresponding `vaultRef` target — never by
-  editing `profiles.json` with a new inline secret (it doesn't hold one).
+- Rotate credentials in Doppler (or at the source system, e.g. Adobe IMS,
+  then update Doppler to match) — never by editing `profiles.json` with a
+  new inline secret (it doesn't hold one, only pointers to where the real
+  value lives).
 - After any suspected credential exposure (e.g. a real secret accidentally
   committed anywhere, ever), rotate immediately and treat the old value as
   permanently compromised even after removal from git history.
