@@ -46,10 +46,10 @@
    ```
 2. Set the per-profile env vars locally (see step 3 above) using the
    `new_client_test_user` name.
-3. In production, populate the real secret at the `vaultRef` path in
-   Vault/AWS Secrets Manager instead, and set
-   `MCP_SECRETS_BACKEND=vault` for the affected server(s) — see
-   `docker-compose.prod.yml`.
+3. In production, populate the real secret in Doppler instead (see
+   "Doppler setup" in `docs/security-model.md` for the project/config
+   layout and exact secret naming), and set `MCP_SECRETS_BACKEND=doppler`
+   for the affected server(s) — see `docker-compose.prod.yml`.
 
 ## Adding a new mcp-server package to the monorepo
 
@@ -71,8 +71,13 @@
 5. Add a job to `.github/workflows/ci.yml` to build/test it, and a matrix
    entry to `.github/workflows/build-images.yml` to publish its image.
 6. If the orchestrator should be able to call it, add its base URL as an
-   env var to `orchestrator`'s compose service and reference it in
-   `orchestrator/src/router.ts`'s `SUB_SERVER_URLS`.
+   env var to `orchestrator`'s compose service and add it to
+   `orchestrator/src/router.ts`'s `SubServerName` type and
+   `SUB_SERVER_ENV_VAR` map. Your server's Dockerfile should set
+   `ENV MCP_TRANSPORT=streamable-http` and `ENV PORT=<its port>` (see
+   any existing server's Dockerfile) so the orchestrator can reach it
+   over HTTP; `MCP_TRANSPORT=stdio` (the default when unset) remains
+   available for local CLI/Claude Desktop use.
 
 ## Running tests
 
@@ -80,9 +85,10 @@
 # aep-core
 cd mcp-servers/aep-core && pip install -e ".[dev]" && pytest
 
-# site-crawler / orchestrator (Node test runner)
+# site-crawler / orchestrator / web-ui backend (Node test runner)
 cd mcp-servers/site-crawler && npm install && npm test
 cd orchestrator && npm install && npm test
+cd web-ui/backend && npm install && npm test
 
 # shared validation harness
 cd shared/validation && npm install && npm run ci

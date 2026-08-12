@@ -9,6 +9,7 @@ never leaves this module.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -33,7 +34,15 @@ from .segmentation.segments import SegmentationClient
 
 logger = get_logger("aep_core.server")
 
-mcp = FastMCP("aep-core")
+# Transport is env-driven: "stdio" (default — e.g. for a local Claude
+# Desktop config invoking this as a subprocess) or "streamable-http" (used
+# in docker-compose, where the orchestrator reaches this server over HTTP
+# at http://aep-core:<port>/mcp — see orchestrator/src/router.ts).
+mcp = FastMCP(
+    "aep-core",
+    host=os.environ.get("MCP_HTTP_HOST", "0.0.0.0"),
+    port=int(os.environ.get("PORT", "8801")),
+)
 
 # One shared token manager for the process lifetime so tokens are cached
 # across tool calls instead of re-fetched every time.
@@ -225,8 +234,11 @@ def list_sandboxes(profile: str, domain: str) -> list[dict[str, Any]]:
 
 
 def main() -> None:
-    logger.info("starting aep-core MCP server")
-    mcp.run()
+    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    logger.info("starting aep-core MCP server", extra={"context": {"transport": transport}})
+    if transport not in ("stdio", "streamable-http"):
+        raise ValueError(f"Unknown MCP_TRANSPORT: {transport!r}")
+    mcp.run(transport=transport)
 
 
 if __name__ == "__main__":

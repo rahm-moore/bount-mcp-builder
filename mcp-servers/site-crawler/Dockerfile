@@ -10,6 +10,8 @@ RUN npm install --no-audit --no-fund
 RUN npm run build
 
 ENV MCP_SECRETS_BACKEND=local
+ENV MCP_TRANSPORT=streamable-http
+ENV PORT=8802
 EXPOSE 8802
 
 CMD ["node", "dist/index.js"]
