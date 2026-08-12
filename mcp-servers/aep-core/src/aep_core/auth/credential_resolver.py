@@ -18,6 +18,11 @@ Backend selection is controlled by the `MCP_SECRETS_BACKEND` env var:
     Vault / AWS Secrets Manager. The profile's `vaultRef` from
     profiles.json tells us where to look; nothing here should ever read a
     plaintext secret from a checked-in file in that mode.
+  - "doppler": production path, implemented. Fetches secrets at call
+    time from a Doppler project/config named in the profile's
+    `dopplerConfig`, authenticated with a single bootstrap token
+    (`DOPPLER_TOKEN` env var) that is the only credential this process
+    needs ambient access to. See docs/security-model.md for setup.
 
 See docs/security-model.md for the full policy this module implements.
 """
@@ -29,6 +34,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import httpx
+
+DOPPLER_API_BASE = "https://api.doppler.com/v3"
 
 
 class ProfileNotFoundError(Exception):
@@ -153,6 +162,86 @@ def _resolve_vault(profile_name: str, profile_meta: dict[str, Any]) -> ResolvedC
     )
 
 
+def _fetch_doppler_secrets(project: str, config: str, token: str) -> dict[str, str]:
+    """Download the full secrets map for one Doppler project/config.
+
+    Isolated as its own function (rather than inlined into
+    `_resolve_doppler`) purely so tests can monkeypatch it instead of
+    hitting the real Doppler API.
+    """
+    try:
+        response = httpx.get(
+            f"{DOPPLER_API_BASE}/configs/config/secrets/download",
+            params={"project": project, "config": config, "format": "json"},
+            auth=(token, ""),  # Doppler API: bearer token as basic-auth username
+            timeout=10.0,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise SecretBackendError(
+            f"Doppler request failed for project={project!r} config={config!r}: {exc}"
+        ) from exc
+    return response.json()
+
+
+def _resolve_doppler(profile_name: str, profile_meta: dict[str, Any]) -> ResolvedCredentials:
+    doppler_config = profile_meta.get("dopplerConfig")
+    if not doppler_config or not doppler_config.get("project") or not doppler_config.get("config"):
+        raise SecretBackendError(
+            f"Profile '{profile_name}' has no dopplerConfig (project/config) configured."
+        )
+
+    token = os.environ.get("DOPPLER_TOKEN")
+    if not token:
+        raise SecretBackendError(
+            "DOPPLER_TOKEN is not set. This is the one bootstrap credential this "
+            "process needs — a Doppler service token scoped to the project/config "
+            "referenced by each profile's dopplerConfig. See docs/security-model.md."
+        )
+
+    secrets_map = _fetch_doppler_secrets(doppler_config["project"], doppler_config["config"], token)
+
+    required_fields = [
+        "base_url",
+        "client_id",
+        "client_secret",
+        "api_key",
+        "org_id",
+        "tech_account_id",
+        "sandbox",
+    ]
+    values: dict[str, str] = {}
+    missing: list[str] = []
+    for field in required_fields:
+        secret_name = _env_var_for(profile_name, field)
+        value = secrets_map.get(secret_name)
+        if not value:
+            missing.append(secret_name)
+            continue
+        values[field] = value
+
+    if missing:
+        raise SecretBackendError(
+            f"Missing Doppler secrets for profile '{profile_name}' in "
+            f"{doppler_config['project']}/{doppler_config['config']}: {', '.join(missing)}."
+        )
+
+    scopes_raw = secrets_map.get(_env_var_for(profile_name, "scopes"), "")
+    scopes = tuple(s.strip() for s in scopes_raw.split(",") if s.strip())
+
+    return ResolvedCredentials(
+        profile_name=profile_name,
+        base_url=values["base_url"],
+        client_id=values["client_id"],
+        client_secret=values["client_secret"],
+        api_key=values["api_key"],
+        org_id=values["org_id"],
+        tech_account_id=values["tech_account_id"],
+        sandbox=values["sandbox"],
+        scopes=scopes,
+    )
+
+
 def resolve_profile(profile_name: str, domain: str) -> ResolvedCredentials:
     """Resolve a profile name + target domain into usable AEP credentials.
 
@@ -189,5 +278,7 @@ def resolve_profile(profile_name: str, domain: str) -> ResolvedCredentials:
         return _resolve_local(profile_name, profile_meta)
     if backend == "vault":
         return _resolve_vault(profile_name, profile_meta)
+    if backend == "doppler":
+        return _resolve_doppler(profile_name, profile_meta)
 
     raise SecretBackendError(f"Unknown MCP_SECRETS_BACKEND: {backend!r}")
