@@ -9,6 +9,7 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { jobStore } from "../db/job-store.js";
 import { ClaudeClient } from "../agent/claude-client.js";
+import { callMcpTool } from "../mcp/mcp-client.js";
 
 export const router = Router();
 
@@ -56,24 +57,41 @@ router.post("/audits", async (req, res) => {
     return;
   }
 
-  // NOTE: dispatching to the orchestrator's `fullSiteAudit` tool over its
-  // real MCP transport is left for whoever wires up
-  // orchestrator/src/router.ts's sub-server transport — this route
-  // reflects the intended shape of that call.
-  jobStore.update(job.id, {
-    status: "failed",
-    result: { error: "NotImplemented: dispatch to orchestrator.fullSiteAudit not wired up yet" },
-  });
+  jobStore.update(job.id, { status: "running" });
+  // Dispatched synchronously here for simplicity — fullSiteAudit runs to
+  // completion (including its own crawl-then-poll steps) before this
+  // request resolves. A production version would return 202 immediately
+  // and let the client poll jobStore via a separate endpoint instead.
+  try {
+    const report = await callMcpTool("orchestrator", orchestratorUrl, "fullSiteAudit", {
+      profile,
+      domain,
+      edgeConfigId,
+    });
+    jobStore.update(job.id, { status: "completed", result: report as Record<string, unknown> });
+  } catch (err) {
+    jobStore.update(job.id, {
+      status: "failed",
+      result: { error: err instanceof Error ? err.message : String(err) },
+    });
+  }
   res.status(202).json(jobStore.get(job.id));
 });
 
-router.get("/news/digest", async (_req, res) => {
+router.get("/news/digest", async (req, res) => {
   const industryNewsUrl = process.env.INDUSTRY_NEWS_TRACKER_URL;
   if (!industryNewsUrl) {
     res.status(503).json({ error: "INDUSTRY_NEWS_TRACKER_URL not configured" });
     return;
   }
-  res.status(501).json({ error: "NotImplemented: proxy to industry-news-tracker.getWeeklyDigest not wired up yet" });
+
+  const windowDays = Number(req.query.windowDays ?? 7);
+  try {
+    const digest = await callMcpTool("industry-news-tracker", industryNewsUrl, "getWeeklyDigest", { windowDays });
+    res.json(digest);
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 router.post("/chat", async (req, res) => {

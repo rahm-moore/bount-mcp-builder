@@ -161,7 +161,35 @@ fields (`access_token`, `client_secret`) never appear in an audit entry.
   `resolveVault` are still `NotImplementedError` placeholders) — Doppler
   is the implemented production path; only build this out if you need a
   second backend.
-- The orchestrator's actual sub-server transport
-  (`callSubServerTool` in `router.ts`) is also a placeholder; audit
-  logging is wired around it correctly, but there's no live dispatch yet
-  to audit.
+
+## Sub-server transport (implemented)
+
+`callSubServerTool` in `orchestrator/src/router.ts` and the equivalent
+dispatch in `web-ui/backend/src/mcp/mcp-client.ts` are real, not stubs:
+both connect to sub-servers over the MCP Streamable HTTP transport
+(`@modelcontextprotocol/sdk`'s `Client` + `StreamableHTTPClientTransport`),
+matching each sub-server's `MCP_TRANSPORT=streamable-http` mode (the
+default in every Dockerfile; `stdio` remains available for local
+CLI/Claude Desktop use via `MCP_TRANSPORT=stdio`).
+
+Two non-obvious things this required, verified against a live
+cross-language call between the orchestrator and aep-core during
+development:
+
+- **Streamable HTTP's "stateless" mode is one-shot per transport, not
+  per-connection.** A `StreamableHTTPServerTransport` constructed with
+  `sessionIdGenerator: undefined` throws if `handleRequest()` is called on
+  it more than once — and a single logical tool call is actually 2-3 HTTP
+  requests (`initialize`, `notifications/initialized`, then the real
+  call). Every server in this repo therefore creates a fresh `Server` +
+  transport pair **per incoming HTTP request**, not once at startup — see
+  the `main()` in each of `mcp-servers/site-crawler/src/index.ts`,
+  `mcp-servers/industry-news-tracker/src/index.ts`, and
+  `orchestrator/src/router.ts`.
+- **A tool-level error isn't always JSON.** This repo's own tools always
+  return `JSON.stringify(...)` text, but aep-core's underlying FastMCP
+  runtime turns an *uncaught Python exception* into a plain-text message
+  (e.g. `"Error executing tool list_sandboxes: ..."`). `parseToolResult`
+  (in both `router.ts` and `web-ui/backend/src/mcp/mcp-client.ts`)
+  JSON-decodes error text on a best-effort basis and falls back to the raw
+  string rather than assuming every error is JSON.

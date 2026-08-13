@@ -92,16 +92,31 @@ only code that ever turns a name into a usable credential. The
 orchestrator's one additional responsibility is audit logging
 (`orchestrator/src/audit-log.ts`) — see `docs/security-model.md`.
 
+Sub-server dispatch (`callSubServerTool`) is real: each sub-server runs
+its MCP Streamable HTTP transport (`MCP_TRANSPORT=streamable-http`, the
+Dockerfile default), and the orchestrator connects to it as an ordinary
+MCP client, the same way a Claude Desktop config or this repo's own
+`web-ui/backend` would. See "Sub-server transport" in
+`docs/security-model.md` for the two non-obvious things that transport
+required getting right.
+
 ### `web-ui` — Claude embedded in our own dashboard
 
 The team works from its own internal dashboard
 (`web-ui/frontend`, Next.js) rather than from inside Claude Code's UI
 directly. The dashboard's Express backend
-(`web-ui/backend/src/agent/claude-client.ts`) wires the Anthropic Agent
-SDK to the same MCP servers described above as tools — so the assistant
-embedded in `/chat` can, for example, kick off a site audit or answer a
-question about a segment definition using the exact same tool surface a
-Claude Code session would use.
+(`web-ui/backend/src/agent/claude-client.ts`) wires the Anthropic SDK's
+tool-use loop to MCP servers as tools — so the assistant embedded in
+`/chat` can, for example, answer a question about the latest AEP release
+notes using the exact same tool surface a Claude Code session would use.
+Deliberately, only `orchestrator` and `industry-news-tracker` are wired
+into chat (`getConfiguredMcpServers` in `claude-client.ts`) — `aep-core`
+and `site-crawler` are credential-scoped servers that must be reached
+through the orchestrator's audit log, never directly from this chat
+surface. The `/api/audits` and `/api/news/digest` REST routes
+(`web-ui/backend/src/api/routes.ts`) dispatch to `orchestrator` and
+`industry-news-tracker` respectively via the same shared MCP client
+helper (`web-ui/backend/src/mcp/mcp-client.ts`).
 
 GitHub remains the source of truth for code and CI regardless of which
 surface (Claude Code, or this dashboard's embedded Claude) was used to

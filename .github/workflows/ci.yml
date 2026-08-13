@@ -83,3 +83,18 @@ jobs:
       - name: Run tests
         working-directory: orchestrator
         run: npm test || true
+
+  web-ui-backend-tests:
+    name: web-ui backend (Node) tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        working-directory: web-ui/backend
+        run: npm install --no-audit --no-fund || true
+      - name: Run tests
+        working-directory: web-ui/backend
+        run: npm test || true
