@@ -101,6 +101,47 @@
       "outputSchema": { "type": "object" }
     },
     {
+      "name": "list_dataset_audit",
+      "description": "Full dataset size/row-count audit for this profile's sandbox: paginates Catalog Service, extracts live row count/storage size/Profile-enabled flag/last-batch date per dataset, sorted by size descending.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" }
+        },
+        "required": ["profile", "domain"]
+      },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    },
+    {
+      "name": "resolve_cja_dataview_datasets",
+      "description": "Resolve CJA data view IDs (e.g. 'dv_...') to their underlying AEP Catalog dataset IDs, via each data view's parent connection.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" },
+          "dataview_ids": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["profile", "domain", "dataview_ids"]
+      },
+      "outputSchema": { "type": "object" }
+    },
+    {
+      "name": "audit_datasets_with_cja_labels",
+      "description": "One-shot dataset size/row-count audit + CJA data view cross-reference: runs list_dataset_audit and labels each row with any known CJA data views (from dataview_ids) whose connection includes that dataset. Reusable version of the CIT Bank dataset-audit process.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": { "type": "string" },
+          "domain": { "type": "string" },
+          "dataview_ids": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["profile", "domain", "dataview_ids"]
+      },
+      "outputSchema": { "type": "array", "items": { "type": "object" } }
+    },
+    {
       "name": "list_segments",
       "description": "List Real-Time CDP segment definitions.",
       "inputSchema": {
