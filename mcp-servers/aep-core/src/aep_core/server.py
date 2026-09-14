@@ -21,7 +21,9 @@ from .auth.credential_resolver import (
     resolve_profile,
 )
 from .auth.ims_oauth import IMSTokenManager
+from .catalog.audit import audit_datasets
 from .catalog.datasets import CatalogClient
+from .cja.dataviews import CJAClient
 from .core.logger import get_logger
 from .flow_service.dataflows import DataflowClient
 from .flow_service.datastreams import DatastreamClient
@@ -156,6 +158,82 @@ def list_datasets(profile: str, domain: str) -> dict[str, Any]:
         return client.list_datasets()
     finally:
         client.close()
+
+
+@mcp.tool()
+def list_dataset_audit(profile: str, domain: str) -> list[dict]:
+    """Full dataset size/row-count audit for this profile's sandbox.
+
+    Paginates past Catalog Service's 100-per-page cap and extracts each
+    dataset's live row count, storage size (bytes + GB), Profile-enabled
+    flag, and last-batch timestamp straight from
+    extensions.adobe_lakeHouse.metrics — no separate Query Service or Data
+    Access call needed. Rows are sorted by size_gb descending. For repeat
+    use across multiple sandboxes (e.g. prod + dev2), call once per profile
+    and merge client-side, or use resolve_dataset_audit_with_cja_labels
+    below if you also want known CJA data views cross-referenced.
+    """
+    creds = _resolve(profile, domain)
+    client = CatalogClient(creds, _token_manager)
+    try:
+        datasets = client.list_all_datasets()
+    finally:
+        client.close()
+    return audit_datasets({creds.sandbox: datasets})
+
+
+@mcp.tool()
+def resolve_cja_dataview_datasets(profile: str, domain: str, dataview_ids: list[str]) -> dict[str, Any]:
+    """Resolve CJA data view IDs (e.g. "dv_...") to their underlying AEP dataset IDs.
+
+    A CJA data view can span multiple datasets (event/profile/lookup roles
+    on its parent connection); this returns all of them per data view, in
+    the same shape as cit-bank-websdk's tools/cja_dataview_dataset_map.json.
+    Use this whenever a report/workbook only has a data view ID and you
+    need to trace it back to real Catalog datasets (e.g. to explain which
+    part of a storage/row-count audit a given CJA view corresponds to).
+    """
+    creds = _resolve(profile, domain)
+    client = CJAClient(creds, _token_manager)
+    try:
+        return client.map_dataviews_to_datasets(dataview_ids)
+    finally:
+        client.close()
+
+
+@mcp.tool()
+def audit_datasets_with_cja_labels(profile: str, domain: str, dataview_ids: list[str]) -> list[dict]:
+    """One-shot version of the CIT Bank dataset audit: size/row audit + CJA cross-reference.
+
+    Combines list_dataset_audit and resolve_cja_dataview_datasets: runs the
+    full Catalog Service dataset audit for this profile's sandbox, then
+    labels each row with the names of any known CJA data views (from
+    dataview_ids) whose parent connection includes that dataset. This is
+    the reusable version of the one-off process first run by hand against
+    the CIT Bank tenant (see cit-bank-websdk repo,
+    docs/aep-dataset-audit/) — use this tool instead of re-deriving that
+    script next time the same question comes up.
+    """
+    creds = _resolve(profile, domain)
+    catalog_client = CatalogClient(creds, _token_manager)
+    try:
+        datasets = catalog_client.list_all_datasets()
+    finally:
+        catalog_client.close()
+
+    cja_client = CJAClient(creds, _token_manager)
+    try:
+        dataview_map = cja_client.map_dataviews_to_datasets(dataview_ids)
+    finally:
+        cja_client.close()
+
+    dataset_to_labels: dict[str, list[str]] = {}
+    for dataview_id, info in dataview_map.items():
+        label = f"{dataview_id} ({info['name']})"
+        for dataset_id in info["dataset_ids"]:
+            dataset_to_labels.setdefault(dataset_id, []).append(label)
+
+    return audit_datasets({creds.sandbox: datasets}, dataset_to_labels)
 
 
 # ---------------------------------------------------------------------------
