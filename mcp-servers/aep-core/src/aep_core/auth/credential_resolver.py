@@ -132,7 +132,8 @@ def _resolve_local(profile_name: str, profile_meta: dict[str, Any]) -> ResolvedC
     if missing:
         raise SecretBackendError(
             f"Missing local secret env vars for profile '{profile_name}': "
-            f"{', '.join(missing)}. Set them or switch MCP_SECRETS_BACKEND=vault."
+            f"{', '.join(missing)}. Set them, or switch MCP_SECRETS_BACKEND=doppler "
+            "(see docs/security-model.md)."
         )
 
     scopes_raw = os.environ.get(_env_var_for(profile_name, "scopes"), "")

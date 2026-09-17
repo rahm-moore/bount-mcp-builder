@@ -89,7 +89,7 @@ function resolveLocal(profileName: string): ResolvedCredentials {
   if (missing.length > 0) {
     throw new SecretBackendError(
       `Missing local secret env vars for profile '${profileName}': ${missing.join(", ")}. ` +
-        `Set them or switch MCP_SECRETS_BACKEND=vault.`
+        `Set them, or switch MCP_SECRETS_BACKEND=doppler (see docs/security-model.md).`
     );
   }
 

@@ -27,7 +27,7 @@ export async function checkAlloyVersion(page: Page): Promise<AlloyVersionFinding
       __alloyNS?: string;
     };
     const globalName = w.__alloyNS ?? "alloy";
-    const instance = (window as Record<string, unknown>)[globalName] as
+    const instance = (window as unknown as Record<string, unknown>)[globalName] as
       | { VERSION?: string }
       | undefined;
     return {
