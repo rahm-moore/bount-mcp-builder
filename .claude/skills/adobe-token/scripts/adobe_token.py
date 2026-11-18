@@ -138,6 +138,23 @@ def jwt_expiry(token: str) -> float | None:
     return None
 
 
+def jwt_client_id(token: str) -> str:
+    try:
+        seg = token.split(".")[1]
+        return str(json.loads(base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4))).get("client_id", ""))
+    except Exception:
+        return ""
+
+
+def identity(profile: str | None) -> tuple[str, str]:
+    """(client_id, org_id) the session should be using: first source that names both."""
+    for _, getter in SOURCES:
+        c = getter(profile)
+        if c and c["client_id"] and c["org_id"]:
+            return c["client_id"], c["org_id"]
+    return "", ""
+
+
 def fresh(expires_at: float | None) -> bool:
     return bool(expires_at) and time.time() < expires_at - SAFETY_MARGIN
 
@@ -199,25 +216,34 @@ def resolve_and_mint(profile: str | None) -> tuple[str, float, dict, str]:
 
 
 def ensure(profile: str | None, force: bool = False, do_probe: bool = False) -> tuple[str, dict]:
-    """Return (token, info). Reuse a valid cached or ambient token; otherwise mint."""
-    info: dict = {}
+    """Return (token, info). Reuse a valid cached or ambient token for the right client; otherwise mint."""
+    cid, org = identity(profile)
+
+    def result(token, state, source, exp, client, org_id):
+        return token, {"state": state, "source": source, "expires_at": exp, "client_id": client, "org_id": org_id}
+
     if not force:
         cache = load_cache()
-        if cache and fresh(cache.get("expires_at")):
-            client_id = _pick(os.environ, profile, "client_id") or ""
-            if not client_id or cache.get("client") == _fp(client_id) or from_doppler(profile):
-                token = cache["access_token"]
-                if not do_probe or probe(token, client_id, _pick(os.environ, profile, "org_id")) == 200:
-                    return token, {"state": "valid (cached)", "source": cache.get("source"), "expires_at": cache["expires_at"]}
+        if cache and fresh(cache.get("expires_at")) and (not cid or cache.get("client") == _fp(cid)):
+            token = cache["access_token"]
+            if not do_probe or probe(token, cid, org) == 200:
+                return result(token, "valid (cached)", cache.get("source"), cache["expires_at"], cid, org)
         amb = os.environ.get("ADOBE_ACCESS_TOKEN", "")
         if amb and fresh(jwt_expiry(amb)):
-            cid, org = _pick(os.environ, profile, "client_id"), _pick(os.environ, profile, "org_id")
-            if not do_probe or probe(amb, cid, org) == 200:
-                return amb, {"state": "valid (session variable)", "source": "environment", "expires_at": jwt_expiry(amb)}
+            amb_client = jwt_client_id(amb)
+            acid = cid or _pick(os.environ, profile, "client_id")
+            aorg = org or _pick(os.environ, profile, "org_id")
+            if (not cid or not amb_client or amb_client == cid) and (not do_probe or probe(amb, acid, aorg) == 200):
+                return result(amb, "valid (session variable)", "environment", jwt_expiry(amb), acid, aorg)
     token, exp, creds, source = resolve_and_mint(profile)
+    if do_probe:
+        status = probe(token, creds["client_id"], creds["org_id"])
+        if status != 200:
+            log(f"FAILED: a new token was minted from {source} but the read-only Tags probe returned HTTP {status}. "
+                "Check that the scopes and product profile include the Tags API.")
+            sys.exit(3)
     save_cache(token, exp, creds["client_id"], source)
-    os.environ.update(ADOBE_ACCESS_TOKEN=token, ADOBE_CLIENT_ID=creds["client_id"], ADOBE_ORG_ID=creds["org_id"])
-    return token, {"state": "refreshed", "source": source, "expires_at": exp}
+    return result(token, "refreshed", source, exp, creds["client_id"], creds["org_id"])
 
 
 def describe(info: dict) -> str:
@@ -230,7 +256,11 @@ def main(argv: list[str]) -> int:
     ap.add_argument("command", choices=["status", "ensure", "refresh", "run", "env"])
     ap.add_argument("--profile")
     ap.add_argument("--probe", action="store_true", help="confirm the token with a live read-only GET")
-    ap.add_argument("rest", nargs=argparse.REMAINDER)
+    # Everything after the first "--" is the child command for `run`; options before it are parsed normally.
+    child: list[str] = []
+    if "--" in argv:
+        i = argv.index("--")
+        argv, child = argv[:i], argv[i + 1:]
     a = ap.parse_args(argv)
 
     if a.command == "status":
@@ -245,8 +275,7 @@ def main(argv: list[str]) -> int:
         return 0
 
     token, info = ensure(a.profile, force=a.command == "refresh", do_probe=a.probe)
-    cid = os.environ.get("ADOBE_CLIENT_ID") or _pick(os.environ, a.profile, "client_id")
-    org = os.environ.get("ADOBE_ORG_ID") or _pick(os.environ, a.profile, "org_id")
+    cid, org = info["client_id"], info["org_id"]
     if a.command in ("ensure", "refresh"):
         log(describe(info))
         return 0
@@ -254,7 +283,7 @@ def main(argv: list[str]) -> int:
         for k, v in (("ADOBE_ACCESS_TOKEN", token), ("ADOBE_CLIENT_ID", cid), ("ADOBE_ORG_ID", org)):
             print(f"export {k}='{v}'")
         return 0
-    cmd = [c for c in a.rest if c != "--"] if a.rest and a.rest[0] == "--" else a.rest
+    cmd = child
     if not cmd:
         log("run needs a command after --")
         return 64

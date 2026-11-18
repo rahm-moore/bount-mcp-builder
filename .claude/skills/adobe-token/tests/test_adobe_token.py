@@ -72,5 +72,50 @@ class Ensure(Base):
         self.assertEqual(cm.exception.code, 2); self.assertNotIn("sec'", buf.getvalue()); self.assertNotIn("=sec", buf.getvalue())
 
 
+class Review(Base):
+    def test_probe_flag_after_command_is_parsed(self):
+        with mock.patch.object(at, "ensure", return_value=("t", {"state": "valid (cached)", "source": "x", "expires_at": time.time() + 900, "client_id": "c", "org_id": "o"})) as m:
+            at.main(["ensure", "--probe"])
+            self.assertTrue(m.call_args.kwargs["do_probe"])
+            at.main(["ensure", "--profile", "p", "--probe"])
+            self.assertEqual(m.call_args.args[0], "p")
+
+    def test_run_passes_everything_after_double_dash_to_child(self):
+        info = {"state": "valid (cached)", "source": "x", "expires_at": time.time() + 900, "client_id": "c", "org_id": "o"}
+        with mock.patch.object(at, "ensure", return_value=("t", info)) as e, mock.patch.object(at.subprocess, "call", return_value=0) as call:
+            at.main(["run", "--profile", "p", "--", "echo", "--probe", "--profile", "q"])
+        self.assertFalse(e.call_args.kwargs["do_probe"])
+        self.assertEqual(e.call_args.args[0], "p")
+        self.assertEqual(call.call_args.args[0], ["echo", "--probe", "--profile", "q"])
+        self.assertEqual(call.call_args.kwargs["env"]["ADOBE_CLIENT_ID"], "c")
+
+    def test_cache_for_a_different_client_is_not_reused(self):
+        at.save_cache("client-A-token", time.time() + 3600, "clientA", "doppler")
+        creds_b = {"client_id": "clientB", "client_secret": "s", "org_id": "o", "scopes": ""}
+        with mock.patch.object(at, "SOURCES", (("doppler", lambda p: creds_b),)), \
+             mock.patch.object(at, "mint", return_value=("client-B-token", time.time() + 3600)) as m:
+            token, info = at.ensure("b")
+        self.assertEqual(token, "client-B-token"); self.assertEqual(info["client_id"], "clientB"); m.assert_called_once()
+
+    def test_ambient_token_for_a_different_client_is_not_reused(self):
+        os.environ["ADOBE_ACCESS_TOKEN"] = jwt({"exp": time.time() + 3600, "client_id": "clientA"})
+        creds_b = {"client_id": "clientB", "client_secret": "s", "org_id": "o", "scopes": ""}
+        with mock.patch.object(at, "SOURCES", (("doppler", lambda p: creds_b),)), \
+             mock.patch.object(at, "mint", return_value=("client-B-token", time.time() + 3600)):
+            token, _ = at.ensure("b")
+        self.assertEqual(token, "client-B-token")
+
+    def test_newly_minted_token_is_probed_and_not_cached_on_failure(self):
+        with mock.patch.object(at, "mint", return_value=("tok", time.time() + 3600)), mock.patch.object(at, "probe", return_value=401) as pr:
+            with self.assertRaises(SystemExit) as cm:
+                at.ensure(None, force=True, do_probe=True)
+        self.assertEqual(cm.exception.code, 3); pr.assert_called_once(); self.assertFalse(at.CACHE_FILE.exists())
+
+    def test_newly_minted_token_passes_when_probe_ok(self):
+        with mock.patch.object(at, "mint", return_value=("tok", time.time() + 3600)), mock.patch.object(at, "probe", return_value=200):
+            token, info = at.ensure(None, force=True, do_probe=True)
+        self.assertEqual(info["state"], "refreshed"); self.assertTrue(at.CACHE_FILE.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
