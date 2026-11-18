@@ -117,5 +117,31 @@ class Review(Base):
         self.assertEqual(info["state"], "refreshed"); self.assertTrue(at.CACHE_FILE.exists())
 
 
+class ReviewRound2(Base):
+    def test_cache_reuse_restores_client_and_org_without_ambient_variables(self):
+        os.environ.clear()  # Doppler-only style process: no ambient client or org
+        at.save_cache("cached-token", time.time() + 3600, "clientA", "doppler", "orgA@AdobeOrg")
+        with mock.patch.object(at, "SOURCES", ()):
+            token, info = at.ensure(None)
+        self.assertEqual((token, info["client_id"], info["org_id"]), ("cached-token", "clientA", "orgA@AdobeOrg"))
+
+    def test_probe_401_on_cached_token_mints_a_new_one(self):
+        at.save_cache("old", time.time() + 3600, "cid", "environment", "o@AdobeOrg")
+        calls = iter([401, 200])
+        with mock.patch.object(at, "probe", side_effect=lambda *a: next(calls)), \
+             mock.patch.object(at, "mint", return_value=("new", time.time() + 3600)) as m:
+            token, info = at.ensure(None, do_probe=True)
+        self.assertEqual(token, "new"); m.assert_called_once()
+
+    def test_probe_403_or_429_on_cached_token_reports_and_does_not_mint(self):
+        for status in (403, 429, 503, 0):
+            at.save_cache("old", time.time() + 3600, "cid", "environment", "o@AdobeOrg")
+            with mock.patch.object(at, "probe", return_value=status), \
+                 mock.patch.object(at, "mint", side_effect=AssertionError("must not mint")):
+                with self.assertRaises(SystemExit) as cm:
+                    at.ensure(None, do_probe=True)
+            self.assertEqual(cm.exception.code, 3)
+
+
 if __name__ == "__main__":
     unittest.main()

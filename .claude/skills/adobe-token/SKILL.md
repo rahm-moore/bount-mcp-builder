@@ -15,7 +15,7 @@ Run the script from the repo root. It needs only Python 3 (standard library).
 S=.claude/skills/adobe-token/scripts/adobe_token.py
 
 python3 $S status                 # what is valid and which sources are complete; no secrets printed
-python3 $S ensure --probe         # reuse a valid token or refresh; --probe confirms it with a live read-only GET
+python3 $S ensure --probe         # reuse a valid token or refresh; --probe confirms it with a live read-only GET (401 = refresh; 403/429/5xx = report, never re-mint)
 python3 $S refresh                # force a new token
 python3 $S run -- <command> ...   # preferred: ensure, then run the command with the ADOBE_* variables set
 eval "$(python3 $S env)"          # sets the variables for the REST OF THIS ONE Bash call only

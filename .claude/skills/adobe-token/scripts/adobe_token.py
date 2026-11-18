@@ -114,13 +114,14 @@ def load_cache() -> dict | None:
         return None
 
 
-def save_cache(token: str, expires_at: float, client_id: str, source: str) -> None:
+def save_cache(token: str, expires_at: float, client_id: str, source: str, org_id: str = "") -> None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(CACHE_DIR, stat.S_IRWXU)
     tmp = CACHE_FILE.with_suffix(".tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
-        json.dump({"access_token": token, "expires_at": expires_at, "client": _fp(client_id), "source": source}, fh)
+        json.dump({"access_token": token, "expires_at": expires_at, "client": _fp(client_id), "source": source,
+                   "client_id": client_id, "org_id": org_id}, fh)
     os.replace(tmp, CACHE_FILE)
 
 
@@ -216,33 +217,49 @@ def resolve_and_mint(profile: str | None) -> tuple[str, float, dict, str]:
 
 
 def ensure(profile: str | None, force: bool = False, do_probe: bool = False) -> tuple[str, dict]:
-    """Return (token, info). Reuse a valid cached or ambient token for the right client; otherwise mint."""
+    """Return (token, info). Reuse a valid cached or ambient token for the right client; otherwise mint.
+
+    A probe result of 401 means the token is invalid and triggers a refresh. Any other non-200 result
+    (403, 429, 5xx, network) says nothing about token validity, so it is reported, not "fixed" by minting.
+    """
     cid, org = identity(profile)
 
     def result(token, state, source, exp, client, org_id):
         return token, {"state": state, "source": source, "expires_at": exp, "client_id": client, "org_id": org_id}
 
+    def check(token, client, org_id) -> bool:
+        if not do_probe:
+            return True
+        status = probe(token, client, org_id)
+        if status == 200:
+            return True
+        if status == 401:
+            return False
+        log(f"FAILED: the read-only Tags probe returned HTTP {status or 'no response'}. This does not show the token is "
+            "invalid, so no new token was minted. Check Reactor permissions, rate limits and network access.")
+        sys.exit(3)
+
     if not force:
         cache = load_cache()
         if cache and fresh(cache.get("expires_at")) and (not cid or cache.get("client") == _fp(cid)):
-            token = cache["access_token"]
-            if not do_probe or probe(token, cid, org) == 200:
-                return result(token, "valid (cached)", cache.get("source"), cache["expires_at"], cid, org)
+            ccid, corg = cid or cache.get("client_id", ""), org or cache.get("org_id", "")
+            if check(cache["access_token"], ccid, corg):
+                return result(cache["access_token"], "valid (cached)", cache.get("source"), cache["expires_at"], ccid, corg)
         amb = os.environ.get("ADOBE_ACCESS_TOKEN", "")
         if amb and fresh(jwt_expiry(amb)):
             amb_client = jwt_client_id(amb)
             acid = cid or _pick(os.environ, profile, "client_id")
             aorg = org or _pick(os.environ, profile, "org_id")
-            if (not cid or not amb_client or amb_client == cid) and (not do_probe or probe(amb, acid, aorg) == 200):
+            if (not cid or not amb_client or amb_client == cid) and check(amb, acid, aorg):
                 return result(amb, "valid (session variable)", "environment", jwt_expiry(amb), acid, aorg)
     token, exp, creds, source = resolve_and_mint(profile)
     if do_probe:
         status = probe(token, creds["client_id"], creds["org_id"])
         if status != 200:
-            log(f"FAILED: a new token was minted from {source} but the read-only Tags probe returned HTTP {status}. "
+            log(f"FAILED: a new token was minted from {source} but the read-only Tags probe returned HTTP {status or 'no response'}. "
                 "Check that the scopes and product profile include the Tags API.")
             sys.exit(3)
-    save_cache(token, exp, creds["client_id"], source)
+    save_cache(token, exp, creds["client_id"], source, creds["org_id"])
     return result(token, "refreshed", source, exp, creds["client_id"], creds["org_id"])
 
 
